@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import datetime
+import time  # Nueva librería para gestionar los tiempos de espera automáticos
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from google import genai
@@ -214,7 +215,7 @@ elif menu == "💬 Chat":
         supabase.table("chat_familiar").insert({"autor": st.session_state.usuario_activo, "mensaje": nuevo_msg}).execute()
         st.rerun()
 
-# --- MÓDULO 4: ASISTENTE IA OPTIMIZADO Y PROTEGIDO ---
+# --- MÓDULO 4: ASISTENTE IA CON INTELIGENCIA DE REINTENTOS MÚLTIPLES ---
 elif menu == "🤖 Asistente IA":
     st.header("🤖 Asistente Inteligente")
     st.write("Analizo la información familiar para responder tus dudas.")
@@ -227,28 +228,45 @@ elif menu == "🤖 Asistente IA":
         if not client_ia:
             st.error("API Key de Gemini no configurada.")
         else:
-            citas_ctx = supabase.table("citas_medicas").select("*").execute().data
-            tareas_ctx = supabase.table("tareas").select("*").eq("completada", False).execute().data
-            chat_ctx = supabase.table("chat_familiar").select("*").order("creado_en", desc=True).limit(15).execute().data
+            citas_db = supabase.table("citas_medicas").select("paciente,fecha,hora").order("fecha").limit(5).execute().data
+            tareas_db = supabase.table("tareas").select("descripcion,asignado_a").eq("completada", False).limit(5).execute().data
             
-            contexto = f"""
-            Eres el asistente inteligente de este hogar. Tienes acceso a:
-            - Agenda de recordatorios y eventos: {citas_ctx}
-            - Tareas domésticas pendientes: {tareas_ctx}
-            - Últimos mensajes del chat: {chat_ctx}
+            contexto = f"Eres el asistente del hogar de la familia de Alan. Agenda: {citas_db}. Tareas: {tareas_db}. Responde conciso."
             
-            Ayuda a quien consulta de forma clara, directa y familiar.
-            """
+            respuesta_texto = None
             
-            with st.spinner("Buscando en los registros domésticos..."):
-                try:
-                    response = client_ia.models.generate_content(
-                        model='gemini-2.0-flash', 
-                        contents=[contexto, pregunta]
-                    )
-                    st.chat_message("assistant").write(response.text)
-                except Exception as e:
-                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        st.warning("⚠️ La IA está recibiendo muchas preguntas seguidas. Por favor, espera unos 10 segundos antes de volver a consultar.")
-                    else:
-                        st.error(f"Hubo un inconveniente al conectar con la IA: {e}")
+            with st.spinner("Conectando con la Inteligencia Artificial (Gestionando cuota)..."):
+                # Bucle de 3 intentos automáticos separados por pausas de tiempo decrecientes
+                for intento in range(3):
+                    try:
+                        response = client_ia.models.generate_content(
+                            model='gemini-2.0-flash', 
+                            contents=[contexto, pregunta]
+                        )
+                        respuesta_texto = response.text
+                        break  # Si tiene éxito, rompe el bucle de intentos al instante
+                    except Exception as e:
+                        error_str = str(e)
+                        # Si el error es saturación por minuto, el código espera 3 segundos y lo vuelve a intentar solo
+                        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                            time.sleep(3)
+                        else:
+                            st.error(f"Error de conexión: {e}")
+                            break
+            
+            # Desplegar la respuesta si alguno de los reintentos automáticos funcionó
+            if respuesta_texto:
+                st.chat_message("assistant").write(respuesta_texto)
+            else:
+                # Sistema de respaldo local definitivo si la cuota del día de la API gratuita está 100% agotada
+                st.info("💡 La API Key de AI Studio está saturada en su nivel gratuito. Mientras se libera, aquí tienes la información directa de tu base de datos:")
+                
+                st.markdown("### 📅 Próximos Eventos")
+                if citas_db:
+                    for c in citas_db: st.write(f"• **{c['paciente']}** - {c['fecha']} a las {c['hora'][:5]}")
+                else: st.write("No hay eventos registrados.")
+                    
+                st.markdown("### ✅ Tareas Pendientes")
+                if tareas_db:
+                    for t in tareas_db: st.write(f"• {t['descripcion']} ({t['asignado_a']})")
+                else: st.write("No hay tareas pendientes.")

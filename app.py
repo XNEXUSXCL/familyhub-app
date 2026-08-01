@@ -107,7 +107,7 @@ if menu == "📅 Recordatorios":
         titulo_evento = st.text_input("¿Qué evento o recordatorio es?")
         descripcion_evento = st.text_area("Detalles adicionales / Notas")
         
-        # Nueva opción de adjunto para el calendario
+        # Opción de adjunto para el calendario
         archivo_adjunto_cal = st.file_uploader("Adjuntar información (Recetas médicas, invitaciones, pdfs)", key="file_cal")
         
         fecha_evento = st.date_input("Fecha", min_value=datetime.date.today())
@@ -121,7 +121,6 @@ if menu == "📅 Recordatorios":
                     if url_res:
                         url_archivo = url_res
                 
-                # Guardamos la URL del documento en la columna "doctor" o la descripción
                 detalles_finales = f"{descripcion_evento}\n\n📎 Adjunto: {url_archivo}" if url_archivo != "No" else descripcion_evento
                 
                 data = {
@@ -146,7 +145,6 @@ if menu == "📅 Recordatorios":
             st.markdown(f"🔔 **{c['paciente']}**")
             st.code(f"📅 {c['fecha']} a las {c['hora'][:5]}")
             
-            # Detectar y mostrar si hay un archivo adjunto en la descripción del evento
             texto_desc = c['doctor']
             if "📎 Adjunto: " in texto_desc:
                 partes = texto_desc.split("📎 Adjunto: ")
@@ -183,7 +181,6 @@ elif menu == "✅ Tareas":
 elif menu == "💬 Chat":
     st.header("💬 Sala de Chat")
     
-    # Selector de archivos multimedia para el chat
     with st.expander("📸 Enviar Foto, Video, Audio o Documento"):
         archivo_chat = st.file_uploader("Elige un archivo de tu galería o cámara", key="file_chat_input")
         if st.button("Enviar archivo al chat"):
@@ -191,13 +188,11 @@ elif menu == "💬 Chat":
                 with st.spinner("Subiendo archivo..."):
                     url_file, name_file, type_file = subir_archivo_a_supabase(archivo_chat)
                     if url_file:
-                        # Estructuramos el mensaje guardando la URL y metadatos del tipo
                         contenido_mensaje = f"MEDIA_FILE|{type_file}|{url_file}|{name_file}"
                         supabase.table("chat_familiar").insert({"autor": st.session_state.usuario_activo, "mensaje": contenido_mensaje}).execute()
                         st.success("¡Archivo enviado!")
                         st.rerun()
 
-    # Cargar y desplegar el chat
     mensajes = supabase.table("chat_familiar").select("*").order("creado_en", desc=False).limit(50).execute().data
     
     for m in mensajes:
@@ -205,11 +200,9 @@ elif menu == "💬 Chat":
         with st.chat_message("user" if es_propio else "assistant"):
             st.write(f"**{m['autor']}:**")
             
-            # Comprobar si el mensaje es un archivo multimedia
             if str(m["mensaje"]).startswith("MEDIA_FILE|"):
                 _, tipo, url_adjunta, nombre_adjunto = m["mensaje"].split("|")
                 
-                # Renderizar según el tipo de archivo nativo para iOS/Android
                 if tipo.startswith("image/"):
                     st.image(url_adjunta, caption=nombre_adjunto, use_container_width=True)
                 elif tipo.startswith("video/"):
@@ -226,7 +219,7 @@ elif menu == "💬 Chat":
         supabase.table("chat_familiar").insert({"autor": st.session_state.usuario_activo, "mensaje": nuevo_msg}).execute()
         st.rerun()
 
-# --- MÓDULO 4: ASISTENTE IA ---
+# --- MÓDULO 4: ASISTENTE IA CORREGIDO ---
 elif menu == "🤖 Asistente IA":
     st.header("🤖 Asistente Inteligente")
     pregunta = st.text_input("¿Qué deseas consultar?")
@@ -237,5 +230,6 @@ elif menu == "🤖 Asistente IA":
         
         contexto = f"Eres el asistente del hogar. Datos actuales: Recordatorios:{citas_ctx}, Tareas:{tareas_ctx}, Chat:{chat_ctx}. Responde de manera concisa."
         with st.spinner("Analizando información..."):
-            response = client_ia.models.generate_content(model='gemini-2.5-flash', contents=[contexto, pregunta])
+            # Corrección del modelo a gemini-2.0-flash para evitar el error 404
+            response = client_ia.models.generate_content(model='gemini-2.0-flash', contents=[contexto, pregunta])
             st.chat_message("assistant").write(response.text)

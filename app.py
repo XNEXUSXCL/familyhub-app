@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import datetime
-import time  # Nueva librería para gestionar los tiempos de espera automáticos
+import time
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from google import genai
@@ -97,7 +97,7 @@ if st.sidebar.button("🔒 Cerrar Sesión"):
 
 menu = st.sidebar.radio("Navegación", ["📅 Recordatorios", "✅ Tareas", "💬 Chat", "🤖 Asistente IA"])
 
-# --- MÓDULO 1: RECORDATORIOS Y CALENDARIO CON ADJUNTOS ---
+# --- MÓDULO 1: RECORDATORIOS Y CALENDARIO CON CONTROL DE WHATSAPP ---
 if menu == "📅 Recordatorios":
     st.header("📅 Calendario y Recordatorios")
     
@@ -124,10 +124,11 @@ if menu == "📅 Recordatorios":
                     "paciente": titulo_evento,
                     "doctor": detalles_finales if detalles_finales else "Sin descripción", 
                     "fecha": str(fecha_evento), 
-                    "hora": str(hora_evento)
+                    "hora": str(hora_evento),
+                    "notificacion_enviada": False  # Nueva marca para control de WhatsApp
                 }
                 supabase.table("citas_medicas").insert(data).execute()
-                st.success("¡Recordatorio guardado!")
+                st.success("¡Recordatorio guardado! La alerta de WhatsApp quedó programada.")
                 st.rerun()
 
     eventos_db = supabase.table("citas_medicas").select("*").execute().data
@@ -215,7 +216,7 @@ elif menu == "💬 Chat":
         supabase.table("chat_familiar").insert({"autor": st.session_state.usuario_activo, "mensaje": nuevo_msg}).execute()
         st.rerun()
 
-# --- MÓDULO 4: ASISTENTE IA CON INTELIGENCIA DE REINTENTOS MÚLTIPLES ---
+# --- MÓDULO 4: ASISTENTE IA ---
 elif menu == "🤖 Asistente IA":
     st.header("🤖 Asistente Inteligente")
     st.write("Analizo la información familiar para responder tus dudas.")
@@ -235,8 +236,7 @@ elif menu == "🤖 Asistente IA":
             
             respuesta_texto = None
             
-            with st.spinner("Conectando con la Inteligencia Artificial (Gestionando cuota)..."):
-                # Bucle de 3 intentos automáticos separados por pausas de tiempo decrecientes
+            with st.spinner("Conectando con la Inteligencia Artificial..."):
                 for intento in range(3):
                     try:
                         response = client_ia.models.generate_content(
@@ -244,29 +244,21 @@ elif menu == "🤖 Asistente IA":
                             contents=[contexto, pregunta]
                         )
                         respuesta_texto = response.text
-                        break  # Si tiene éxito, rompe el bucle de intentos al instante
+                        break
                     except Exception as e:
-                        error_str = str(e)
-                        # Si el error es saturación por minuto, el código espera 3 segundos y lo vuelve a intentar solo
-                        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                             time.sleep(3)
                         else:
                             st.error(f"Error de conexión: {e}")
                             break
             
-            # Desplegar la respuesta si alguno de los reintentos automáticos funcionó
             if respuesta_texto:
                 st.chat_message("assistant").write(respuesta_texto)
             else:
-                # Sistema de respaldo local definitivo si la cuota del día de la API gratuita está 100% agotada
-                st.info("💡 La API Key de AI Studio está saturada en su nivel gratuito. Mientras se libera, aquí tienes la información directa de tu base de datos:")
-                
+                st.info("💡 La API Key de AI Studio está saturada temporalmente. Aquí tienes los datos directos:")
                 st.markdown("### 📅 Próximos Eventos")
                 if citas_db:
                     for c in citas_db: st.write(f"• **{c['paciente']}** - {c['fecha']} a las {c['hora'][:5]}")
-                else: st.write("No hay eventos registrados.")
-                    
                 st.markdown("### ✅ Tareas Pendientes")
                 if tareas_db:
                     for t in tareas_db: st.write(f"• {t['descripcion']} ({t['asignado_a']})")
-                else: st.write("No hay tareas pendientes.")
